@@ -1,0 +1,6 @@
+{
+  "name": "Smart Canteen Pre-Order System",
+  "description": "A beginner-friendly Java OOP prototype for pre-ordering campus food, managing menu categories, and tracking live preparation status.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Canteen - Student Pre-Order</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <a href="index.html" class="brand-title">Smart Canteen System</a>
+      <nav class="nav-links">
+        <a href="index.html" class="nav-link active">Student Pre-Order</a>
+        <a href="staff.html" class="nav-link">Staff Portal</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-header">
+      <h1 class="page-title">Campus Canteen Pre-Order</h1>
+      <p class="page-subtitle">Skip the lunch queue. Pre-order your food, get an order number, and collect when ready.</p>
+    </div>
+
+    <!-- Prominent Order Placed Notification (Initially Hidden) -->
+    <div id="orderSuccessCallout" class="order-success-callout" style="display: none;">
+      <p class="order-callout-msg">Order Placed Successfully!</p>
+      <div class="order-badge-number" id="displayOrderNumber">#0</div>
+      <p style="color: #166534; font-size: 0.95rem; font-weight: 600;">Show this number when collecting your food.</p>
+      <p style="color: #64748b; font-size: 0.825rem; margin-top: 0.35rem;" id="displayOrderSummary"></p>
+    </div>
+
+    <div class="grid-two-col">
+      
+      <!-- Left Column: Menu Section -->
+      <section class="card">
+        <div class="card-title">
+          <span>Canteen Menu</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="fetchMenu()">Refresh Menu</button>
+        </div>
+        <p class="card-subtitle">Select quantities from the categories below.</p>
+
+        <!-- Message Box for Alerts -->
+        <div id="menuAlert" class="alert-box alert-danger" style="display: none;"></div>
+
+        <!-- Dynamic Menu Container -->
+        <div id="menuContainer">
+          <div class="empty-state">
+            <p class="empty-state-title">Loading menu...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Cart & Order Placement + Tracking -->
+      <div style="display: flex; flex-direction: column; gap: 1.75rem;">
+        
+        <!-- Cart & Checkout Card -->
+        <section class="card">
+          <h2 class="card-title">Place Your Order</h2>
+          <p class="card-subtitle">Enter your name and review your cart total.</p>
+
+          <div id="orderError" class="alert-box alert-danger" style="display: none;"></div>
+
+          <form id="orderForm" onsubmit="handlePlaceOrder(event)">
+            <div class="form-group">
+              <label for="studentNameInput" class="form-label">Student Name</label>
+              <input type="text" id="studentNameInput" class="form-input" placeholder="e.g. Alex Johnson" required autocomplete="off">
+            </div>
+
+            <div style="margin-top: 1rem;">
+              <h3 style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Selected Items</h3>
+              <div id="cartItemsList" style="margin-top: 0.5rem; min-height: 48px;">
+                <p style="font-size: 0.85rem; color: var(--text-dim);">No items selected yet. Add items from the menu.</p>
+              </div>
+            </div>
+
+            <div class="cart-total-bar">
+              <span>Total Payable</span>
+              <span id="cartTotalDisplay" class="tabular-nums">₹0.00</span>
+            </div>
+
+            <button type="submit" id="submitOrderBtn" class="btn btn-primary btn-block" style="margin-top: 1rem;" disabled>
+              Place Order
+            </button>
+          </form>
+        </section>
+
+        <!-- Order Tracking Card -->
+        <section class="card">
+          <h2 class="card-title">Track Order Status</h2>
+          <p class="card-subtitle">Check the live status of your canteen order.</p>
+
+          <div id="trackError" class="alert-box alert-danger" style="display: none;"></div>
+
+          <form id="trackForm" onsubmit="handleTrackOrder(event)">
+            <div class="form-group">
+              <label for="trackOrderNumberInput" class="form-label">Order Number</label>
+              <div style="display: flex; gap: 0.5rem;">
+                <input type="number" id="trackOrderNumberInput" class="form-input" placeholder="e.g. 1" min="1" required>
+                <button type="submit" class="btn btn-secondary">Track</button>
+              </div>
+            </div>
+          </form>
+
+          <!-- Tracking Result Box -->
+          <div id="trackResultBox" style="display: none; margin-top: 1.25rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">Order <strong id="trackResultOrderNum">#1</strong></span>
+              <span id="trackResultStatusPill" class="status-pill status-placed">Placed</span>
+            </div>
+            <p style="font-size: 0.875rem; color: var(--text-main); margin-bottom: 0.35rem;">
+              Name: <strong id="trackResultStudentName">Alex</strong> | Total: <strong id="trackResultTotal">₹0.00</strong>
+            </p>
+            <p style="font-size: 0.8rem; color: var(--text-muted);" id="trackResultSummary"></p>
+
+            <!-- Highlighted message when order becomes Ready -->
+            <div id="readyHighlightBanner" class="ready-alert" style="display: none;">
+              🎉 Your order is READY! Please proceed to the canteen counter with your order number.
+            </div>
+
+            <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.75rem; text-align: center;">
+              Auto-refreshing status every 5 seconds...
+            </p>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // In-memory frontend state
+    let menuItems = [];
+    let cart = {}; // itemId -> quantity
+    let trackingInterval = null;
+    let currentlyTrackedOrder = null;
+
+    // Load menu on page startup
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchMenu();
+    });
+
+    // 1. Fetch menu from GET /api/menu
+    async function fetchMenu() {
+      const container = document.getElementById('menuContainer');
+      const alertBox = document.getElementById('menuAlert');
+      alertBox.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/menu');
+        if (!response.ok) {
+          throw new Error('Failed to retrieve menu. Status: ' + response.status);
+        }
+        menuItems = await response.json();
+        renderMenu();
+        updateCartDisplay();
+      } catch (err) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p class="empty-state-title" style="color: var(--danger-text);">Unable to connect to server</p>
+            <p class="empty-state-text">Please ensure the Java backend is running on port 8080.</p>
+          </div>
+        `;
+      }
+    }
+
+    // Render menu grouped by Category (Meal, Snack, Beverage)
+    function renderMenu() {
+      const container = document.getElementById('menuContainer');
+
+      // Requirement: "If empty, show 'Menu not available yet. Please check back later.'"
+      if (!menuItems || menuItems.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p class="empty-state-title">Menu not available yet. Please check back later.</p>
+            <p class="empty-state-text">Canteen staff has not added any items yet.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Group items by category
+      const categories = ['Meal', 'Snack', 'Beverage'];
+      let html = '';
+
+      categories.forEach(cat => {
+        const itemsInCat = menuItems.filter(item => item.category.toLowerCase() === cat.toLowerCase());
+        if (itemsInCat.length > 0) {
+          html += `
+            <div class="category-block">
+              <div class="category-title">
+                <span>${cat}s</span>
+                <span class="category-count">(${itemsInCat.length})</span>
+              </div>
+          `;
+
+          itemsInCat.forEach(item => {
+            const currentQty = cart[item.id] || 0;
+            html += `
+              <div class="food-item-row">
+                <div class="food-item-info">
+                  <div class="food-item-name">${escapeHtml(item.name)}</div>
+                  <div class="food-item-meta">₹${parseFloat(item.price).toFixed(2)}</div>
+                </div>
+                <div class="qty-control">
+                  <button type="button" class="qty-btn" onclick="changeQty(${item.id}, -1)">-</button>
+                  <span class="qty-val" id="qty-${item.id}">${currentQty}</span>
+                  <button type="button" class="qty-btn" onclick="changeQty(${item.id}, 1)">+</button>
+                </div>
+              </div>
+            `;
+          });
+
+          html += `</div>`;
+        }
+      });
+
+      // Handle items that might have a different custom category
+      const otherItems = menuItems.filter(item => !categories.some(c => c.toLowerCase() === item.category.toLowerCase()));
+      if (otherItems.length > 0) {
+        html += `<div class="category-block"><div class="category-title">Other Items</div>`;
+        otherItems.forEach(item => {
+          const currentQty = cart[item.id] || 0;
+          html += `
+            <div class="food-item-row">
+              <div class="food-item-info">
+                <div class="food-item-name">${escapeHtml(item.name)}</div>
+                <div class="food-item-meta">${escapeHtml(item.category)} · ₹${parseFloat(item.price).toFixed(2)}</div>
+              </div>
+              <div class="qty-control">
+                <button type="button" class="qty-btn" onclick="changeQty(${item.id}, -1)">-</button>
+                <span class="qty-val" id="qty-${item.id}">${currentQty}</span>
+                <button type="button" class="qty-btn" onclick="changeQty(${item.id}, 1)">+</button>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+
+      container.innerHTML = html;
+    }
+
+    // Change item quantity in cart
+    function changeQty(itemId, delta) {
+      const current = cart[itemId] || 0;
+      const next = current + delta;
+      if (next <= 0) {
+        delete cart[itemId];
+      } else {
+        cart[itemId] = next;
+      }
+
+      // Update quantity display in menu row if rendered
+      const qtyElem = document.getElementById(`qty-${itemId}`);
+      if (qtyElem) {
+        qtyElem.textContent = cart[itemId] || 0;
+      }
+
+      updateCartDisplay();
+    }
+
+    // Update live cart list and total
+    function updateCartDisplay() {
+      const listElem = document.getElementById('cartItemsList');
+      const totalElem = document.getElementById('cartTotalDisplay');
+      const submitBtn = document.getElementById('submitOrderBtn');
+
+      const itemIds = Object.keys(cart);
+      if (itemIds.length === 0) {
+        listElem.innerHTML = `<p style="font-size: 0.85rem; color: var(--text-dim);">No items selected yet. Add items from the menu.</p>`;
+        totalElem.textContent = '₹0.00';
+        submitBtn.disabled = true;
+        return;
+      }
+
+      let total = 0.0;
+      let html = '';
+
+      itemIds.forEach(idStr => {
+        const id = parseInt(idStr);
+        const qty = cart[id];
+        const item = menuItems.find(m => m.id === id);
+        if (item) {
+          const subtotal = item.price * qty;
+          total += subtotal;
+          html += `
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.25rem 0;">
+              <span>${escapeHtml(item.name)} × ${qty}</span>
+              <span class="tabular-nums">₹${subtotal.toFixed(2)}</span>
+            </div>
+          `;
+        }
+      });
+
+      listElem.innerHTML = html;
+      totalElem.textContent = `₹${total.toFixed(2)}`;
+      submitBtn.disabled = false;
+    }
+
+    // 2. Handle Place Order -> POST /api/orders
+    async function handlePlaceOrder(event) {
+      event.preventDefault();
+      const errorBox = document.getElementById('orderError');
+      const submitBtn = document.getElementById('submitOrderBtn');
+      const nameInput = document.getElementById('studentNameInput');
+      errorBox.style.display = 'none';
+
+      const studentName = nameInput.value.trim();
+      if (!studentName) {
+        showError(errorBox, 'Please enter your student name.');
+        return;
+      }
+
+      const itemKeys = Object.keys(cart);
+      if (itemKeys.length === 0) {
+        showError(errorBox, 'Please select at least one item from the menu.');
+        return;
+      }
+
+      // Format items string: "id:qty,id:qty"
+      const itemsSpec = itemKeys.map(id => `${id}:${cart[id]}`).join(',');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      try {
+        // Send as form-encoded data (key=value) without external JSON libraries
+        const formData = new URLSearchParams();
+        formData.append('studentName', studentName);
+        formData.append('items', itemsSpec);
+
+        const response = await fetch('/api/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: formData.toString()
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to place order.');
+        }
+
+        // Prominently show order number
+        const successCallout = document.getElementById('orderSuccessCallout');
+        const numElem = document.getElementById('displayOrderNumber');
+        const summaryElem = document.getElementById('displayOrderSummary');
+        
+        numElem.textContent = '#' + data.orderNumber;
+        summaryElem.textContent = `Name: ${data.studentName} · Total: ₹${parseFloat(data.total).toFixed(2)}`;
+        successCallout.style.display = 'block';
+        successCallout.scrollIntoView({ behavior: 'smooth' });
+
+        // Populate tracking section automatically
+        document.getElementById('trackOrderNumberInput').value = data.orderNumber;
+        startOrderTracking(data.orderNumber);
+
+        // Reset cart and form
+        cart = {};
+        nameInput.value = '';
+        renderMenu();
+        updateCartDisplay();
+
+      } catch (err) {
+        showError(errorBox, err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Place Order';
+      }
+    }
+
+    // 3. Handle Track Order
+    function handleTrackOrder(event) {
+      event.preventDefault();
+      const numInput = document.getElementById('trackOrderNumberInput');
+      const orderNum = parseInt(numInput.value);
+      if (isNaN(orderNum) || orderNum < 1) {
+        showError(document.getElementById('trackError'), 'Please enter a valid order number.');
+        return;
+      }
+      startOrderTracking(orderNum);
+    }
+
+    function startOrderTracking(orderNum) {
+      currentlyTrackedOrder = orderNum;
+      if (trackingInterval) {
+        clearInterval(trackingInterval);
+      }
+      
+      // Perform immediate check
+      pollOrderStatus();
+
+      // Requirement: "Auto-refresh every 5 seconds"
+      trackingInterval = setInterval(pollOrderStatus, 5000);
+    }
+
+    async function pollOrderStatus() {
+      if (!currentlyTrackedOrder) return;
+      const errorBox = document.getElementById('trackError');
+      const resultBox = document.getElementById('trackResultBox');
+      const readyBanner = document.getElementById('readyHighlightBanner');
+      errorBox.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/orders/status?number=${currentlyTrackedOrder}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Order not found.');
+        }
+
+        resultBox.style.display = 'block';
+        document.getElementById('trackResultOrderNum').textContent = '#' + data.orderNumber;
+        document.getElementById('trackResultStudentName').textContent = data.studentName;
+        document.getElementById('trackResultTotal').textContent = '₹' + parseFloat(data.total).toFixed(2);
+        document.getElementById('trackResultSummary').textContent = data.summary;
+
+        const pill = document.getElementById('trackResultStatusPill');
+        pill.textContent = data.status;
+        pill.className = 'status-pill status-' + data.status.toLowerCase();
+
+        // Highlighted message when order is Ready
+        if (data.status.toLowerCase() === 'ready') {
+          readyBanner.style.display = 'block';
+        } else {
+          readyBanner.style.display = 'none';
+        }
+
+      } catch (err) {
+        showError(errorBox, err.message);
+        resultBox.style.display = 'none';
+      }
+    }
+
+    function showError(elem, msg) {
+      elem.textContent = msg;
+      elem.style.display = 'block';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, function(m) {
+        switch (m) {
+          case '&': return '&amp;';
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '"': return '&quot;';
+          case "'": return '&#39;';
+        }
+      });
+    }
+  </script>
+</body>
+</html>
